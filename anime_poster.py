@@ -263,6 +263,51 @@ def move_to_posted(drive, file_id: str, posted_folder_id: str):
     ).execute()
 
 
+def explain_empty_folder(drive, folder_id: str):
+    """Called when no video was found: print WHY, so the log is enough to fix it."""
+    try:
+        folder = drive.files().get(fileId=folder_id, fields="id, name").execute()
+    except Exception as exc:  # noqa: BLE001
+        print(f"Cannot open the folder behind DRIVE_FOLDER_ID: {exc}")
+        print(
+            "-> Either DRIVE_FOLDER_ID is wrong (copy it from the folder's address bar),"
+            " or the folder is not shared with the service account as Editor."
+        )
+        return
+
+    print(f"The service account can open the folder: {folder.get('name')!r}")
+    try:
+        resp = (
+            drive.files()
+            .list(
+                q=f"'{folder_id}' in parents and trashed = false",
+                fields="files(name, mimeType)",
+                pageSize=20,
+            )
+            .execute()
+        )
+    except Exception as exc:  # noqa: BLE001
+        print(f"Could not list the folder's contents: {exc}")
+        return
+
+    files = resp.get("files", [])
+    if not files:
+        print(
+            "-> The folder looks EMPTY to the service account. Check that the video is"
+            " directly inside this folder (not in a subfolder), and that this is the"
+            " folder whose ID is in DRIVE_FOLDER_ID."
+        )
+        return
+
+    print(f"Files the service account can see ({len(files)}):")
+    for f in files:
+        print(f"   - {f['name']}  [{f['mimeType']}]")
+    print(
+        "-> None of these is a video file (type must start with video/). A Drive"
+        " shortcut or a still-processing upload will not count."
+    )
+
+
 def main():
     drive_folder_id = env("DRIVE_FOLDER_ID")
     posted_folder_id = env("POSTED_FOLDER_ID")
@@ -272,6 +317,7 @@ def main():
 
     if not video:
         print("No new reels waiting in the Drive folder today.")
+        explain_empty_folder(drive, drive_folder_id)
         return
 
     caption = (video.get("description") or "").strip()
