@@ -1,17 +1,32 @@
 # Account 2 (anime) - Instagram + Facebook Page only (no YouTube).
-# Paste this into a NEW file in the new repo, at exactly this path:
+# Paste this into the file in the repo at exactly this path:
 #   .github/workflows/post_reel.yml
 # (GitHub only recognizes workflows inside that folder)
+#
+# 6-7 reels a day: six fixed slots, plus a 7th "bonus" slot that runs on a
+# coin flip, so some days get 6 reels and some get 7. Each reel goes out a
+# random 0-5 minutes after its slot. Keep at least 7 videos a day in the
+# Reels folder.
 
 name: Post anime reel - Account 2 (Instagram + Facebook)
 
 on:
   schedule:
-    # All times in UTC (IST = UTC+5:30). Change these lines to move the slots.
-    - cron: "30 18 * * *" # 12:00 AM IST -> posts between 12-1 AM IST
-    - cron: "30 6 * * *" # 12:00 PM IST -> posts between 12-1 PM IST
-    - cron: "30 12 * * *" # 6:00 PM IST -> posts between 6-7 PM IST
+    # All times in UTC (IST = UTC+5:30). Odd minutes on purpose: GitHub is
+    # busiest at the top of the hour and delays runs there.
+    - cron: "7 3 * * *" # 08:37 AM IST
+    - cron: "13 5 * * *" # 10:43 AM IST
+    - cron: "23 7 * * *" # 12:53 PM IST
+    - cron: "37 9 * * *" # 03:07 PM IST
+    - cron: "41 11 * * *" # 05:11 PM IST
+    - cron: "53 13 * * *" # 07:23 PM IST
+    - cron: "17 15 * * *" # 08:47 PM IST  <- bonus slot, runs on a coin flip
   workflow_dispatch: {} # lets you also trigger it manually from the Actions tab
+
+# One run at a time, so two runs can never grab the same video.
+concurrency:
+  group: anime-reel-poster
+  cancel-in-progress: false
 
 jobs:
   post:
@@ -28,12 +43,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r anime_requirements.txt
 
-      - name: Wait a random number of minutes (0-59)
-        if: github.event_name == 'schedule'
-        run: sleep $(( RANDOM % 3600 ))
-
       - name: Run poster
         env:
+          SCHEDULE: ${{ github.event.schedule }}
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
           POSTED_FOLDER_ID: ${{ secrets.POSTED_FOLDER_ID }}
@@ -45,4 +57,14 @@ jobs:
           CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_ACCESS_TOKEN: ${{ secrets.FB_PAGE_ACCESS_TOKEN }}
-        run: python anime_poster.py
+        run: |
+          # Bonus slot: skip it on about half of the days (6 reels instead of 7).
+          if [ "$SCHEDULE" = "17 15 * * *" ] && [ $((RANDOM % 2)) -eq 0 ]; then
+            echo "Bonus slot skipped today."
+            exit 0
+          fi
+          # Scheduled runs wait 0-5 minutes so the post time varies a little.
+          if [ "$GITHUB_EVENT_NAME" = "schedule" ]; then
+            sleep $(( RANDOM % 300 ))
+          fi
+          python anime_poster.py
